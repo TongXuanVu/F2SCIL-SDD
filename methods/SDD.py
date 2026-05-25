@@ -550,7 +550,7 @@ class TARGET(BaseLearner):
         if self.args.get("dataset") == "ciciot23":
             clnt_cls_num = np.zeros((num_clients, self._total_classes))
             from dataloader.ciciot23_helper import Ciciot23_helper
-            ciciot_helper = Ciciot23_helper(self.args)
+            ciciot_helper = Ciciot23_helper(self.args, data_root=self.args.get('data_dir', 'C:/FederatedLearning/FL/core/data_split'))
             for idx in range(num_clients):
                 client_dset = ciciot_helper.get_client_train_dataset(self._cur_task, idx)
                 if client_dset is not None:
