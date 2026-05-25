@@ -22,6 +22,7 @@ parser.add_argument('--group', type=str, default="exp1", help='wandb group')
 parser.add_argument('--agg', type=str, default="None", help='aggregation method')
 parser.add_argument('--seed', type=int, default=1008, help='random seed')
 # federated continual learning settings
+parser.add_argument('--data_dir', type=str, default='C:/FederatedLearning/FL/core/data_split', help='path to dataset root')
 parser.add_argument('--dataset', type=str, default="tinyImagenet", help='which dataset')
 parser.add_argument('--tasks', type=int, default=11, help='total number of tasks')
 parser.add_argument('--num_class', type=int, default=200, help='total of class')
@@ -85,7 +86,7 @@ def test_pipeline(args):
         from dataloader.ciciot23_helper import Ciciot23_helper
         from torch.utils.data import DataLoader
         import torch
-        ciciot_helper = Ciciot23_helper(args)
+        ciciot_helper = Ciciot23_helper(args, data_root=args.get('data_dir', 'C:/FederatedLearning/FL/core/data_split'))
         
         rounds_per_task = args["inc_ep"] * args["com_round"]
         
@@ -169,7 +170,7 @@ def train(args):
     if args["dataset"] == "ciciot23":
         from dataloader.ciciot23_helper import Ciciot23_helper
         from torch.utils.data import DataLoader
-        ciciot_helper = Ciciot23_helper(args)
+        ciciot_helper = Ciciot23_helper(args, data_root=args.get('data_dir', 'C:/FederatedLearning/FL/core/data_split'))
         seen_classes = []
         rounds_per_task = args["inc_ep"] * args["com_round"]
         resume_task = (args["resume_round"] - 1) // rounds_per_task if args["resume_round"] > 0 else 0
