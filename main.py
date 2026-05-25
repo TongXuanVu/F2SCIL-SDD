@@ -11,6 +11,8 @@ warnings.filterwarnings('ignore')
 
 parser = argparse.ArgumentParser(description='benchmark for federated continual learning')
 # Exp settings
+parser.add_argument('--mode', type=str, default='train', choices=['train', 'test', 'resume'], help='execution mode')
+parser.add_argument('--resume_round', type=int, default=0, help='round to resume from')
 parser.add_argument('--exp_name', type=str, default='', help='name of this experiment')
 parser.add_argument('--num_workers', type=int, default='4', help='the number of workers for loading data')
 parser.add_argument('--wandb', type=int, default=0, help='1 for using wandb')
