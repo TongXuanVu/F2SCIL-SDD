@@ -1,12 +1,8 @@
 import argparse
-import wandb, os
+import os
 import time
 from utils.data_manager import setup_seed
-from methods.finetune import Finetune
-from methods.icarl import iCaRL
-from methods.lwf import LwF
-from methods.ewc import EWC
-from methods.target import TARGET
+from methods.SDD import TARGET
 from dataloader.cifar100.cifar import Cifar_helper
 from dataloader.data_utils import get_dataloader
 import warnings
@@ -75,34 +71,149 @@ args = parser.parse_args()
 
 def get_learner(model_name, args):
     name = model_name.lower()
-    if name == "icarl":
-        return iCaRL(args)
-    elif name == "ewc":
-        return EWC(args)
-    elif name == "lwf":
-        return LwF(args)
-    elif name == "finetune":
-        return Finetune(args)
-    elif name == "ours":
+    if name == "ours":
         return TARGET(args)
     else:
         assert 0
 
 
+
+def test_pipeline(args):
+    setup_seed(args["seed"])
+    learner = get_learner(args["method"], args)
+    if args["dataset"] == "ciciot23":
+        from dataloader.ciciot23_helper import Ciciot23_helper
+        from torch.utils.data import DataLoader
+        import torch
+        ciciot_helper = Ciciot23_helper(args)
+        
+        rounds_per_task = args["inc_ep"] * args["com_round"]
+        
+        for round_idx in range(1, args["tasks"] * rounds_per_task + 1):
+            ckpt_path = os.path.join(args["model_save_dir"], f"checkpoint_round_{round_idx}.pth")
+            if not os.path.exists(ckpt_path):
+                print(f"Checkpoint not found: {ckpt_path}")
+                continue
+                
+            print(f"Evaluating {ckpt_path}...")
+            ckpt = torch.load(ckpt_path, map_location='cpu')
+            learner._network.load_state_dict(ckpt['global_model'])
+            
+            # device mapping for testing on GPU if available
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            learner._network.to(device)
+            learner._network.eval()
+            
+            task = (round_idx - 1) // rounds_per_task
+            
+            seen_classes = []
+            for t in range(task + 1):
+                rem_classes = args["num_class"] - args["base_class"]
+                inc_tasks = args["tasks"] - 1
+                classes_per_task = [args["base_class"]]
+                if inc_tasks > 0:
+                    base_inc = rem_classes // inc_tasks
+                    remainder = rem_classes % inc_tasks
+                    for i in range(inc_tasks):
+                        classes_per_task.append(base_inc + (1 if i < remainder else 0))
+                
+                start_cls = sum(classes_per_task[:t])
+                end_cls = start_cls + classes_per_task[t]
+                new_classes = range(start_cls, end_cls)
+                seen_classes.extend(list(new_classes))
+                
+            test_dataset = ciciot_helper.get_test_dataset(seen_classes)
+            testloader = DataLoader(test_dataset, batch_size=args["local_bs"], shuffle=False, num_workers=0)
+            
+            metrics = learner.calculate_comprehensive_metrics(learner._network, testloader)
+            
+            # Save to CSV
+            csv_path = os.path.join(args["log_dir"], 'test_all_metrics.csv')
+            os.makedirs(args["log_dir"], exist_ok=True)
+            file_exists = os.path.isfile(csv_path)
+            import csv
+            with open(csv_path, 'a', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(["Round", "Task", "Loss", "Accuracy", "Micro_P", "Micro_R", "Micro_F1", 
+                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1", "Macro_FPR"])
+                writer.writerow([round_idx, task, metrics["loss"], metrics["accuracy"], 
+                                 metrics["micro_p"], metrics["micro_r"], metrics["micro_f1"],
+                                 metrics["macro_p"], metrics["macro_r"], metrics["macro_f1"],
+                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"], metrics["macro_fpr"]])
+            
+            # Save CM for the last round
+            if round_idx == args["tasks"] * rounds_per_task:
+                try:
+                    import seaborn as sns
+                    import matplotlib.pyplot as plt
+                    plt.figure(figsize=(12, 10))
+                    sns.heatmap(metrics["cm"], annot=False, cmap='Blues')
+                    plt.title(f'Confusion Matrix (Task {task}, Round {round_idx})')
+                    plt.ylabel('True Label')
+                    plt.xlabel('Predicted Label')
+                    cm_plot_path = os.path.join(args["log_dir"], 'final_confusion_matrix.png')
+                    plt.savefig(cm_plot_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    print(f"=> TEST_ALL: Đã lưu hình ảnh Confusion Matrix tại: {cm_plot_path}")
+                except Exception as e:
+                    print(f"=> Lỗi vẽ Confusion Matrix: {e}")
+                    
+        print(f"=> TEST_ALL: Hoàn tất. Đã lưu metrics vào {csv_path}")
+        print("Test pipeline only implemented for ciciot23")
+
 def train(args):
     setup_seed(args["seed"])
-
     learner = get_learner(args["method"], args)
 
-    for task in range(args["tasks"]):
-        if args["dataset"] == "cifar100":
-            trainloader, testloader1, testloader2 = Helper.get_current_phase_dataloader(task)
-            train_set = trainloader.dataset
-            learner.incremental_train(task, trainloader, train_set, testloader1, testloader2)
-        else:
-            trainset, trainloader, testloader1, testloader2 = get_dataloader(args, task)
-            learner.incremental_train(task, trainloader, trainset, testloader1, testloader2)  # train for one task
-        learner.after_task()
+    if args["dataset"] == "ciciot23":
+        from dataloader.ciciot23_helper import Ciciot23_helper
+        from torch.utils.data import DataLoader
+        ciciot_helper = Ciciot23_helper(args)
+        seen_classes = []
+        rounds_per_task = args["inc_ep"] * args["com_round"]
+        resume_task = (args["resume_round"] - 1) // rounds_per_task if args["resume_round"] > 0 else 0
+        
+        for task in range(args["tasks"]):
+            if args["mode"] == "resume" and task < resume_task:
+                # Still need to update seen_classes for when we actually train
+                rem_classes = args["num_class"] - args["base_class"]
+                inc_tasks = args["tasks"] - 1
+                classes_per_task = [args["base_class"]]
+                if inc_tasks > 0:
+                    base_inc = rem_classes // inc_tasks
+                    remainder = rem_classes % inc_tasks
+                    for i in range(inc_tasks):
+                        classes_per_task.append(base_inc + (1 if i < remainder else 0))
+                
+                start_cls = sum(classes_per_task[:task])
+                end_cls = start_cls + classes_per_task[task]
+                new_classes = range(start_cls, end_cls)
+                seen_classes.extend(list(new_classes))
+                continue
+            if task == 0:
+                new_classes = range(args["base_class"])
+            else:
+                start_cls = args["base_class"] + (task - 1) * args["incremental_class"]
+                new_classes = range(start_cls, start_cls + args["incremental_class"])
+            seen_classes.extend(list(new_classes))
+            
+            test_dataset = ciciot_helper.get_test_dataset(seen_classes)
+            testloader2 = DataLoader(test_dataset, batch_size=args["local_bs"], shuffle=False, num_workers=0)
+            testloader1 = testloader2 
+            
+            learner.incremental_train(task, None, None, testloader1, testloader2)
+            learner.after_task()
+    else:
+        for task in range(args["tasks"]):
+            if args["dataset"] == "cifar100":
+                trainloader, testloader1, testloader2 = Helper.get_current_phase_dataloader(task)
+                train_set = trainloader.dataset
+                learner.incremental_train(task, trainloader, train_set, testloader1, testloader2)
+            else:
+                trainset, trainloader, testloader1, testloader2 = get_dataloader(args, task)
+                learner.incremental_train(task, trainloader, trainset, testloader1, testloader2)
+            learner.after_task()
 
 
 if __name__ == '__main__':
@@ -119,9 +230,20 @@ if __name__ == '__main__':
         args.save_dir = os.path.join(dir, args.exp_name)
         args.save_dir2 = os.path.join(dir, "synthesis")
 
+    args.log_dir = os.path.join(dir, "logs") if args.method == "ours" else os.path.join("run", "logs")
+    if not os.path.exists(args.log_dir):
+        os.makedirs(args.log_dir)
+
     args = vars(args)
-    Helper = Cifar_helper(args)
-    train(args)
+    if args["dataset"] == "cifar100":
+        Helper = Cifar_helper(args)
+    else:
+        Helper = None
+        
+    if args["mode"] == "test":
+        test_pipeline(args)
+    else:
+        train(args)
 
     end_time = time.time()
     execution_time = (end_time - start_time) / 3600

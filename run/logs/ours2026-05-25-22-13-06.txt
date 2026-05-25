@@ -1,0 +1,5 @@
+2026-05-25-22-13-06
+{'exp_name': 'ciciot23_base_session', 'num_workers': 4, 'wandb': 0, 'save_dir': 'run\\ciciot23_base_session', 'save_dir2': 'run\\synthesis', 'save_png': 'run/result', 'project': 'TARGET', 'group': 'exp1', 'agg': 'None', 'seed': 1008, 'dataset': 'ciciot23', 'tasks': 6, 'num_class': 34, 'base_class': 10, 'incremental_class': 5, 'method': 'ours', 'aggregate': 'WA', 'net': 'resnet20', 'syn_round': 100, 'syn_round2': 100, 'num_users': 10, 'synthesis_batch_size': 256, 'local_bs': 128, 'syn_bs': 25, 'local_ep': 5, 'base_ep': 100, 'com_round': 1, 'inc_ep': 30, 'beta': 1, 'frac': 1.0, 'nums1': 10000, 'nums2': 1500, 'kd': 1, 'bn': 1, 'oh': 1, 'adv': 1, 'en': 1, 'mu': 1, 'memory_size': 1000, 'model_save_dir': 'run/model', 'student_save_dir': 'run/student', 'log_dir': 'run\\logs', 'ckp_prefix': '', 'visual': 'run/visual', 'lr_factor': 0.1, 'weight_decay': 0.0006, 'custom_weight_decay': 0.0005, 'custom_momentum': 0.9, 'base_lr': 0.1, 'fc_lr': 0.01, 'lr_G': 0.001, 'loss': 'CE', 't': 0.8, 'init_cls': 10, 'memory_per_class': 20, 'fixed_memory': False}
+Task0,Feature:64, Class:60
+Task 0, Learning on 0-10
+Task 0 All params: 26017, Trainable params: 26017

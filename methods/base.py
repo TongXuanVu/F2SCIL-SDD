@@ -8,13 +8,14 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from torch import nn
 import torch.optim as optim
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 from torch.utils.data import DataLoader
 from utils.toolkit import tensor2numpy, accuracy
 from scipy.spatial.distance import cdist
 from utils.data_manager import DummyDataset
 from torchvision import transforms
 import os
+import csv
 import torch.nn.functional as F
 import convs.modified_resnet_cifar as modified_resnet_cifar
 import convs.modified_resnet_subimagenet as modified_renet_subimagenet
@@ -155,23 +156,88 @@ class BaseLearner(object):
             optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
             return optimizer
         if task > 0:
-            ignored_params = list(map(id, model.fc.fc1.parameters()))
-            ignored_params.extend(list(map(id, model.fc.fc2.parameters())))
-            ignored_params.extend(list(map(id, model.layer3.parameters())))
-            base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
-            base_params = filter(lambda p: p.requires_grad, base_params)
+            if self.args.get("dataset") == "ciciot23":
+                # For CNN1D
+                ignored_params = list(map(id, model.fc.fc1.parameters()))
+                ignored_params.extend(list(map(id, model.fc.fc2.parameters())))
+                base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+                base_params = filter(lambda p: p.requires_grad, base_params)
+                
+                tg_params_new = [{'params': base_params, 'lr': lr_backbone, 'weight_decay': self.args.get("custom_weight_decay", 5e-4)},
+                                 {'params': model.fc.fc1.parameters(), 'lr': lr_fc1,
+                                  'weight_decay': self.args.get("custom_weight_decay", 5e-4)},
+                                 {'params': model.fc.fc2.parameters(), 'lr': lr_fc2,
+                                  'weight_decay': self.args.get("custom_weight_decay", 5e-4)}]
+            else:
+                # For ResNet
+                ignored_params = list(map(id, model.fc.fc1.parameters()))
+                ignored_params.extend(list(map(id, model.fc.fc2.parameters())))
+                ignored_params.extend(list(map(id, model.layer3.parameters())))
+                base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+                base_params = filter(lambda p: p.requires_grad, base_params)
 
-            tg_params_new = [{'params': base_params, 'lr': lr_backbone, 'weight_decay': self.args["custom_weight_decay"]},
-                             {'params': model.layer3.parameters(), 'lr': lr_backbone,
-                              'weight_decay': self.args["custom_weight_decay"]},
-                             {'params': model.fc.fc1.parameters(), 'lr': lr_fc1,
-                              'weight_decay': self.args["custom_weight_decay"]},
-                             {'params': model.fc.fc2.parameters(), 'lr': lr_fc2,
-                              'weight_decay': self.args["custom_weight_decay"]}]
+                tg_params_new = [{'params': base_params, 'lr': lr_backbone, 'weight_decay': self.args.get("custom_weight_decay", 5e-4)},
+                                 {'params': model.layer3.parameters(), 'lr': lr_backbone,
+                                  'weight_decay': self.args.get("custom_weight_decay", 5e-4)},
+                                 {'params': model.fc.fc1.parameters(), 'lr': lr_fc1,
+                                  'weight_decay': self.args.get("custom_weight_decay", 5e-4)},
+                                 {'params': model.fc.fc2.parameters(), 'lr': lr_fc2,
+                                  'weight_decay': self.args.get("custom_weight_decay", 5e-4)}]
 
-            optimizer = optim.SGD(tg_params_new, nesterov=True, momentum=self.args["custom_momentum"],
-                                  weight_decay=self.args["custom_weight_decay"])
+            optimizer = optim.SGD(tg_params_new, nesterov=True, momentum=self.args.get("custom_momentum", 0.9),
+                                  weight_decay=self.args.get("custom_weight_decay", 5e-4))
             return optimizer
+
+    def calculate_comprehensive_metrics(self, model, testloader):
+        y_pred_list = []
+        y_true_list = []
+        test_loss = 0.0
+
+        model.eval()
+        with torch.no_grad():
+            for inputs, labels in testloader:
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+                outputs = model(inputs)
+                
+                loss = F.cross_entropy(outputs, labels, reduction='sum')
+                test_loss += loss.item()
+                
+                _, y_pred = torch.max(outputs, 1)
+
+                y_pred_list.extend(y_pred.cpu().numpy())
+                y_true_list.extend(labels.cpu().numpy())
+
+        test_loss /= len(testloader.dataset)
+        accuracy = accuracy_score(y_true_list, y_pred_list)
+        
+        # Calculate Precision, Recall, F1
+        metrics_micro = precision_recall_fscore_support(y_true_list, y_pred_list, average='micro', zero_division=0)
+        metrics_macro = precision_recall_fscore_support(y_true_list, y_pred_list, average='macro', zero_division=0)
+        metrics_weighted = precision_recall_fscore_support(y_true_list, y_pred_list, average='weighted', zero_division=0)
+        
+        cm = confusion_matrix(y_true_list, y_pred_list)
+        
+        # Calculate FPR (Macro)
+        FP = cm.sum(axis=0) - np.diag(cm)  
+        FN = cm.sum(axis=1) - np.diag(cm)
+        TP = np.diag(cm)
+        TN = cm.sum() - (FP + FN + TP)
+        
+        # Add epsilon to prevent division by zero
+        FPR_per_class = FP / (FP + TN + 1e-8)
+        macro_fpr = np.mean(FPR_per_class)
+
+        results = {
+            "loss": test_loss,
+            "accuracy": accuracy,
+            "micro_p": metrics_micro[0], "micro_r": metrics_micro[1], "micro_f1": metrics_micro[2],
+            "macro_p": metrics_macro[0], "macro_r": metrics_macro[1], "macro_f1": metrics_macro[2],
+            "weighted_p": metrics_weighted[0], "weighted_r": metrics_weighted[1], "weighted_f1": metrics_weighted[2],
+            "macro_fpr": macro_fpr,
+            "cm": cm
+        }
+        return results
 
     def calculate_accuracy(self, model, testloader):
 
@@ -548,9 +614,10 @@ class BaseLearner(object):
             # mask = torch.tensor([label % 5 == 0 for label in targets])
             all_labels.append(targets)
             with torch.no_grad():
-                for layer in [model.conv1, model.bn1, model.relu, model.layer1, model.layer2, model.layer3,
-                              model.avgpool]:
-                    features = layer(features)
+                if self.args.get("dataset") != "ciciot23":
+                    for layer in [model.conv1, model.bn1, model.relu, model.layer1, model.layer2, model.layer3,
+                                  model.avgpool]:
+                        features = layer(features)
                 features = features.view(features.size(0), -1)
                 all_features.append(features)
         all_labels = torch.cat(all_labels, dim=0).detach().cpu().numpy()
@@ -598,9 +665,10 @@ class BaseLearner(object):
                 mask = torch.tensor([label % 5 == 0 for label in predicted_labels])
                 all_probs.append(max_probs[mask])
                 all_labels.append(predicted_labels[mask])
-                for layer in [model.conv1, model.bn1, model.relu, model.layer1, model.layer2, model.layer3,
-                              model.avgpool]:
-                    features = layer(features)
+                if self.args.get("dataset") != "ciciot23":
+                    for layer in [model.conv1, model.bn1, model.relu, model.layer1, model.layer2, model.layer3,
+                                  model.avgpool]:
+                        features = layer(features)
                 features = features.view(features.size(0), -1)
                 all_features.append(features[mask])
         all_probs = torch.cat(all_probs, dim=0).detach().cpu().numpy()

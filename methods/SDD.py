@@ -15,14 +15,17 @@ from torchvision import transforms
 import os
 import torch.optim as optim
 from torch.optim import lr_scheduler
-from utils.Loss import CEandSCE, LabelSmoothing, CEandKD, CE
+from utils.Loss import CEandSCE, CEandKD, CE
 import torch.nn.init as init
 from utils.replay_syn import GlobalSynthesizer
 from utils.synthesizers import LocalSynthesizer
-from utils.toolkit import KLDiv, UnlabeledImageDataset
+from utils.toolkit import KLDiv, UnlabeledImageDataset, UnlabeledTensorDataset
 import convs.modified_resnet_cifar as modified_resnet_cifar
 import convs.modified_resnet_subimagenet as modified_renet_subimagenet
 import convs.modified_linear as modified_linear
+import convs.cnn1d as cnn1d
+from convs.generator import Generator, Generator1D
+import csv
 
 dataset = "cifar100"
 if dataset == "cifar100":
@@ -206,6 +209,8 @@ class TARGET(BaseLearner):
         super().__init__(args)
         if self.args["dataset"] == "cifar100":
             self._network = modified_resnet_cifar.resnet20(num_classes=self.base_class)
+        elif self.args["dataset"] == "ciciot23":
+            self._network = cnn1d.cnn1d(num_classes=self.base_class)
         else:
             self._network = modified_renet_subimagenet.resnet18(num_classes=self.base_class)
 
@@ -261,7 +266,12 @@ class TARGET(BaseLearner):
 
         img_shape = (3, 32, 32) if self.args["dataset"] == "cifar100" else (3, 84, 84)
         if self.args["dataset"] == "mini_imagenet": img_shape = (3, 84, 84)  # (3, 224, 224)
-        generator = Generator(nz=nz, ngf=64, img_size=img_size, nc=3).cuda()
+        
+        if self.args["dataset"] == "ciciot23":
+            img_shape = (1, 31)
+            generator = Generator1D(nz=nz, ngf=64, img_size=31, nc=1).cuda()
+        else:
+            generator = Generator(nz=nz, ngf=64, img_size=img_size, nc=3).cuda()
         teacher = teacher.cuda()
         acc = self._compute_accuracy(teacher, testloader)
         self.logger.info("replay_teacher_acc {}".format(acc))
@@ -304,8 +314,9 @@ class TARGET(BaseLearner):
     def get_replay_data_loader(self):
         data_dir = os.path.join(self.save_dir, "task_{}".format(self._cur_task - 1))
         print(" syn_bs:{}, data_dir: {}".format(self.args["syn_bs"], data_dir))
-
-        replay_dataset = UnlabeledImageDataset(data_dir, transform=train_transform, nums=self.nums1)
+        
+        DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
+        replay_dataset = DatasetClass(data_dir, transform=train_transform, nums=self.nums1)
         replay_data_loader = torch.utils.data.DataLoader(
             replay_dataset, batch_size=self.args["syn_bs"], shuffle=True,
             num_workers=4, pin_memory=False, )
@@ -313,7 +324,8 @@ class TARGET(BaseLearner):
 
     def get_all_replay_data(self):
         data_dir = os.path.join(self.save_dir, "task_{}".format(self._cur_task))
-        replay_dataset = UnlabeledImageDataset(data_dir, transform=train_transform, nums=self.nums1)
+        DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
+        replay_dataset = DatasetClass(data_dir, transform=train_transform, nums=self.nums1)
         loader = torch.utils.data.DataLoader(
             replay_dataset, batch_size=sample_batch_size, shuffle=True,
             num_workers=4, pin_memory=False, sampler=None)
@@ -321,7 +333,8 @@ class TARGET(BaseLearner):
 
     def get_syn_data_loader(self):
         data_dir = os.path.join(self.save_dir2, "task_{}".format(self._cur_task))
-        syn_dataset = UnlabeledImageDataset(data_dir, transform=train_transform, nums=self.nums1)
+        DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
+        syn_dataset = DatasetClass(data_dir, transform=train_transform, nums=self.nums1)
         syn_data_loader = torch.utils.data.DataLoader(
             syn_dataset, batch_size=sample_batch_size, shuffle=True,
             num_workers=4, pin_memory=False)
@@ -329,13 +342,14 @@ class TARGET(BaseLearner):
 
     def get_replay_dataloader(self):
         cumulative_dataset = None
+        DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
         for task in range(self._cur_task):
             if task == 0:
                 data_dir = os.path.join(self.save_dir, "task_{}".format(task))
-                cumulative_dataset = UnlabeledImageDataset(data_dir, transform=train_transform, nums=6000)
+                cumulative_dataset = DatasetClass(data_dir, transform=train_transform, nums=6000)
             else:
                 data_dir = os.path.join(self.save_dir2, "task_{}".format(task))
-                current_dataset = UnlabeledImageDataset(data_dir,transform=train_transform, nums=500)
+                current_dataset = DatasetClass(data_dir,transform=train_transform, nums=500)
                 cumulative_dataset = ConcatDataset([cumulative_dataset, current_dataset])
 
         combined_data_loader = torch.utils.data.DataLoader(
@@ -352,7 +366,12 @@ class TARGET(BaseLearner):
         if self.args["dataset"] == "mini_imagenet": img_size = 84
         img_shape = (3, 32, 32) if self.args["dataset"] == "cifar100" else (3, 84, 84)
         if self.args["dataset"] == "mini_imagenet": img_shape = (3, 84, 84)  # (3, 224, 224)
-        generator = Generator(nz=nz, ngf=64, img_size=img_size, nc=3).cuda()
+        
+        if self.args["dataset"] == "ciciot23":
+            img_shape = (1, 31)
+            generator = Generator1D(nz=nz, ngf=64, img_size=31, nc=1).cuda()
+        else:
+            generator = Generator(nz=nz, ngf=64, img_size=img_size, nc=3).cuda()
         in_features = teacher.fc.in_features
         out_features = teacher.fc.out_features
         self.logger.info("Syn_teacher Feature {} Class{}".format(in_features, out_features))
@@ -406,6 +425,8 @@ class TARGET(BaseLearner):
         if self._cur_task == 0:
             if self.args["dataset"] == "cifar100":
                 self._network = modified_resnet_cifar.resnet20(num_classes=self.base_class)
+            elif self.args["dataset"] == "ciciot23":
+                self._network = cnn1d.cnn1d(num_classes=self.base_class)
             else:
                 self._network = modified_renet_subimagenet.resnet18(num_classes=self.base_class)
 
@@ -420,7 +441,7 @@ class TARGET(BaseLearner):
             self._old_network = copy.deepcopy(self._network)
             in_features = self._network.fc.in_features
             out_features = self._network.fc.out_features
-            new_fc = modified_linear.SplitCosineLinear(in_features, out_features, self.args["incremental_class"])
+            new_fc = modified_linear.SplitCosineLinear(in_features, out_features, self._new_classes)
             new_fc.fc1.weight.data = self._network.fc.weight.data
             self._network.fc = new_fc
 
@@ -458,11 +479,10 @@ class TARGET(BaseLearner):
         if self._cur_task == 0 and (not os.path.exists(self.save_dir)):
             os.makedirs(self.save_dir)
         if self._cur_task == 0:
-            self._base_update(self._network, trainloader1, testloader2)
-            # best_checkpoint = torch.load(
-            #     os.path.join(self.args["model_save_dir"],
-            #                  self.args['dataset'] + '_session_' + str(self._cur_task) + '.pth'))
-            # self._network.load_state_dict(best_checkpoint['global_model'])
+            if self.args.get("dataset") == "ciciot23":
+                self._incremental_local_train(train_set, testloader1, testloader2, None, self._network)
+            else:
+                self._base_update(self._network, trainloader1, testloader2)
             self.reply_data_generation(self._network, testloader2)
         if self._cur_task != 0:
             self.replay_data_loader = self.get_replay_dataloader()
@@ -520,14 +540,31 @@ class TARGET(BaseLearner):
         best_local_weights = None
         best_acc = 0
         model_list = []
-        teacher = teacher.cuda()
+        if teacher is not None:
+            teacher = teacher.cuda()
         model = model.cuda()
         lr_milestone = [20, 30]
-        user_groups = partition_data(trainset.targets, beta=self.args['beta'], n_parties=self.args["num_users"])
-        clnt_cls_num = record_net_data_stats(trainset.targets, user_groups)
+        
+        num_clients = self.args["num_users"]
+        
+        if self.args.get("dataset") == "ciciot23":
+            clnt_cls_num = np.zeros((num_clients, self._total_classes))
+            from dataloader.ciciot23_helper import Ciciot23_helper
+            ciciot_helper = Ciciot23_helper(self.args)
+            for idx in range(num_clients):
+                client_dset = ciciot_helper.get_client_train_dataset(self._cur_task, idx)
+                if client_dset is not None:
+                    targets = client_dset.targets
+                    unique, counts = np.unique(targets, return_counts=True)
+                    for u, c in zip(unique, counts):
+                        if u < self._total_classes:
+                            clnt_cls_num[idx][int(u)] = c
+        else:
+            user_groups = partition_data(trainset.targets, beta=self.args['beta'], n_parties=num_clients)
+            clnt_cls_num = record_net_data_stats(trainset.targets, user_groups)
+
         self.logger.info("The samples of clients......")
         self.logger.info(clnt_cls_num)
-        num_clients, num_classes = clnt_cls_num.shape
         cls_num = np.sum(clnt_cls_num, axis=0)
         cls_clnt_weight = np.round(clnt_cls_num / (np.tile(cls_num[np.newaxis, :], (num_clients, 1)) + 1e-6),
                                    decimals=2)
@@ -539,10 +576,7 @@ class TARGET(BaseLearner):
             local_weights = []
             user_model = {}
             all_clients_test_acc = []
-            acc = self._compute_accuracy(model, testloader2)
-            self.logger.info("begin task{} acc {}".format(self._cur_task, acc))
-            cnn_accy, new_acc, _ = self.eval_task(testloader2, model)
-            self.logger.info("begin task{} ,CNN: {}".format(self._cur_task, cnn_accy["grouped"]))
+            
             for idx in range(self.args["num_users"]):
                 user_model[idx] = copy.deepcopy(model)
 
@@ -552,32 +586,53 @@ class TARGET(BaseLearner):
                     criterion = CEandSCE(alpha=1, beta=1.2, lam=1, num_classes=self._known_classes)
                 elif self.args['loss'] == 'CEandKD':
                     criterion = CEandKD(alpha=5,num_classes=self._known_classes)
-                elif self.args['loss'] == 'LabelSmoothing':
-                    criterion = LabelSmoothing(alpha=1)
                 else:
-                    raise 'NO LOSS!'
+                    raise Exception('NO LOSS!')
 
                 user_optimizer = self.set_optim(self._cur_task, user_model[idx])
                 user_scheduler = lr_scheduler.MultiStepLR(user_optimizer, milestones=lr_milestone,
                                                           gamma=self.args["lr_factor"])
-                local_train_loader = DataLoader(DatasetSplit(trainset, user_groups[idx]),
-                                                batch_size=self.args["local_bs"], shuffle=True, num_workers=4)
+                                                          
+                if self.args.get("dataset") == "ciciot23":
+                    client_dset = ciciot_helper.get_client_train_dataset(self._cur_task, idx)
+                    if client_dset is None or len(client_dset) == 0:
+                        continue
+                    local_train_loader = DataLoader(client_dset, batch_size=self.args["local_bs"], shuffle=True, num_workers=0)
+                else:
+                    local_train_loader = DataLoader(DatasetSplit(trainset, user_groups[idx]),
+                                                    batch_size=self.args["local_bs"], shuffle=True, num_workers=4)
 
                 user_model[idx].train()
-                teacher.eval()
+                if teacher is not None:
+                    teacher.eval()
+                
                 prog_bar = tqdm(range(self.args["com_round"]))
                 for _, com in enumerate(prog_bar):
                     user_scheduler.step()
-                    iter_loader = enumerate(zip((local_train_loader), (self.replay_data_loader)))
-                    for batch_idx, ((images, targets), syn_input) in iter_loader:
-                        images, labels, syn_input = images.cuda(), targets.cuda(), syn_input.cuda()
+                    if self._cur_task == 0:
+                        iter_loader = enumerate(local_train_loader)
+                    else:
+                        iter_loader = enumerate(zip(local_train_loader, self.replay_data_loader))
+                    
+                    for batch_data in iter_loader:
+                        if self._cur_task == 0:
+                            batch_idx, (images, targets) = batch_data
+                        else:
+                            batch_idx, ((images, targets), syn_input) = batch_data
+                            syn_input = syn_input.cuda()
+
+                        images, labels = images.cuda(), targets.cuda()
                         user_optimizer.zero_grad()
 
                         output = user_model[idx](images)
-                        t_out = teacher(syn_input.detach())
-                        s_out = user_model[idx](syn_input)
-
-                        loss = criterion(output, labels,  t_out, s_out)
+                        
+                        if self._cur_task == 0:
+                            loss = F.cross_entropy(output, labels)
+                        else:
+                            t_out = teacher(syn_input.detach())
+                            s_out = user_model[idx](syn_input)
+                            loss = criterion(output, labels,  t_out, s_out)
+                            
                         loss.backward()
                         user_optimizer.step()
 
@@ -589,34 +644,57 @@ class TARGET(BaseLearner):
 
                 local_weights.append(user_model[idx].state_dict())
                 client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
-                cnn_acc, new_acc, _ = self.eval_task(testloader2, user_model[idx])
-                self.logger.info("User {} ,CNN: {}".format(idx, cnn_acc["grouped"]))
                 all_clients_test_acc.append(client_test_acc)
                 del local_train_loader
                 torch.cuda.empty_cache()
 
-            global_weights = average_weights(local_weights)
-            model.load_state_dict(global_weights)
-            test_acc = self._compute_accuracy(model, testloader2)
-            cnn_acc, new_acc, _ = self.eval_task(testloader2, model)
-            self.logger.info("Server CNN: {}".format(cnn_acc["grouped"]))
-            all_clients_test_acc.append(test_acc)
+            if len(local_weights) > 0:
+                global_weights = average_weights(local_weights)
+                model.load_state_dict(global_weights)
+            
+            # --- EVALUATE AND LOG CSV ---
+            metrics = self.calculate_comprehensive_metrics(model, testloader2)
+            round_idx = self._cur_task * self.args["inc_ep"] + it + 1
+            
+            csv_file = os.path.join(self.args["log_dir"], "metrics_f2scil.csv")
+            file_exists = os.path.isfile(csv_file)
+            with open(csv_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(["Round", "Task", "Loss", "Accuracy", "Micro_P", "Micro_R", "Micro_F1", 
+                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1", "Macro_FPR"])
+                writer.writerow([round_idx, self._cur_task, metrics["loss"], metrics["accuracy"], 
+                                 metrics["micro_p"], metrics["micro_r"], metrics["micro_f1"],
+                                 metrics["macro_p"], metrics["macro_r"], metrics["macro_f1"],
+                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"], metrics["macro_fpr"]])
+            
+            cm_dir = os.path.join(self.args["log_dir"], "cm")
+            os.makedirs(cm_dir, exist_ok=True)
+            np.save(os.path.join(cm_dir, f"cm_round_{round_idx}.npy"), metrics["cm"])
+            
+            if not os.path.exists(self.args["model_save_dir"]):
+                os.makedirs(self.args["model_save_dir"])
+            torch.save({'global_model': copy.deepcopy(model.state_dict()), 'epoch': it, 'test_acc': metrics["accuracy"]},
+                       os.path.join(self.args["model_save_dir"], f"checkpoint_round_{round_idx}.pth"))
+            
             self.logger.info(" round {} ,acc {} ".format(it, all_clients_test_acc))
 
-            if it % 1 == 0:
-                if best_acc < test_acc:
-                    best_acc = test_acc
-                    best_checkpoint = {'global_model': copy.deepcopy(model.state_dict()), 'epoch': it,
-                                       'test_acc': best_acc}
-                    best_local_weights = local_weights
+            if best_acc < metrics["accuracy"]:
+                best_acc = metrics["accuracy"]
+                best_checkpoint = {'global_model': copy.deepcopy(model.state_dict()), 'epoch': it,
+                                   'test_acc': best_acc}
+                best_local_weights = local_weights
 
-        for i in range(len(best_local_weights)):
-            net = copy.deepcopy(self._network)
-            net.load_state_dict(best_local_weights[i])
-            model_list.append(net)
-        ensemble_model = Ensemble(model_list)
-        acc = self._compute_accuracy(ensemble_model, testloader2)
-        self.logger.info("Ensemble model acc :{}".format(acc))
+        # Keep original logic for ensemble and generator
+        if best_local_weights is not None:
+            for i in range(len(best_local_weights)):
+                net = copy.deepcopy(self._network)
+                net.load_state_dict(best_local_weights[i])
+                model_list.append(net)
+        if len(model_list) > 0:
+            ensemble_model = Ensemble(model_list)
+            acc = self._compute_accuracy(ensemble_model, testloader2)
+            self.logger.info("Ensemble model acc :{}".format(acc))
 
         self.syn_data_generation(testloader1, model, model_list, cls_clnt_weight_tensor)
         syn_dataloader = self.get_syn_data_loader()
@@ -626,6 +704,7 @@ class TARGET(BaseLearner):
             os.makedirs(file_path)
         with open(os.path.join(file_path, 'clients.pth'), 'wb') as f:
             pickle.dump(best_local_weights, f)
+            
         torch.save(best_checkpoint,
                    os.path.join(self.args["model_save_dir"], self.args['dataset'] + '_session_' + str(self._cur_task) + '.pth'))
         best_checkpoint = torch.load(

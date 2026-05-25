@@ -245,3 +245,55 @@ class ImagePool(object):
 
     def get_dataset(self, nums=None, transform=None, labeled=True):
         return UnlabeledImageDataset(self.root, transform=transform, nums=nums)
+
+
+class UnlabeledTensorDataset(torch.utils.data.Dataset):
+    def __init__(self, root, it=None, transform=None, nums=None):
+        self.root = os.path.abspath(root)
+        self.tensors = self._collect_all_tensors(nums, it, self.root)
+        self.transform = transform
+        
+        self.all_data = []
+        if len(self.tensors) > 0:
+            for path in self.tensors:
+                data = torch.load(path)
+                self.all_data.append(data)
+            self.all_data = torch.cat(self.all_data, dim=0)
+        else:
+            self.all_data = torch.empty(0)
+
+    def _collect_all_tensors(self, nums, it, root):
+        tensors = []
+        for dirpath, dirnames, files in os.walk(root):
+            for f in sorted(files):
+                if f.endswith('.pt'):
+                    tensors.append(os.path.join(dirpath, f))
+        
+        if nums is not None and len(tensors) > 0:
+            if it is None:
+                tensors = tensors[-nums:]
+            else:
+                tensors = tensors[(it-1)*256:(it-1)*256+nums]
+        return tensors
+
+    def __getitem__(self, idx):
+        return self.all_data[idx]
+
+    def __len__(self):
+        return len(self.all_data)
+
+
+class TensorPool(object):
+    def __init__(self, root):
+        self.root = os.path.abspath(root)
+        os.makedirs(self.root, exist_ok=True)
+        self._idx = 0
+
+    def add(self, tensors, targets=None):
+        # tensors shape: [batch, 1, 31]
+        path = os.path.join(self.root, f"{self._idx}.pt")
+        torch.save(tensors.detach().cpu(), path)
+        self._idx += 1
+
+    def get_dataset(self, nums=None, transform=None, labeled=True):
+        return UnlabeledTensorDataset(self.root, transform=transform, nums=nums)
