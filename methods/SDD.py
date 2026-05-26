@@ -713,13 +713,15 @@ class TARGET(BaseLearner):
         test_acc = self._compute_accuracy(model, testloader2)
 
         self.logger.info("After Task {} Test_acc {}".format(self._cur_task, test_acc))
-        self._local_finetune(testloader2, syn_dataloader, model_list)
+        if self._cur_task > 0:
+            self._local_finetune(testloader2, syn_dataloader, model_list)
 
     def _local_finetune(self, testloader2, syn_dataloader, model_list):
         syn_data_inputs = []
         syn_data_labels = []
         test_acc_tea = []
-        all_client_new_test_acc = np.empty((0, 5), dtype=int)
+        num_new_classes = self._total_classes - self._known_classes
+        all_client_new_test_acc = np.empty((0, num_new_classes), dtype=float)
 
         best_checkpoint = torch.load(
             os.path.join(self.args["model_save_dir"],  self.args['dataset'] + '_session_' + str(self._cur_task) + '.pth'))
