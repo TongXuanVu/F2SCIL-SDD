@@ -205,8 +205,14 @@ class DeepInversionHook():
     def hook_fn(self, module, input, output):
         # hook co compute deepinversion's feature distribution regularization
         nch = input[0].shape[1]
-        mean = input[0].mean([0, 2, 3])
-        var = input[0].permute(1, 0, 2, 3).contiguous().view([nch, -1]).var(1, unbiased=False)
+        if len(input[0].shape) == 4:
+            mean = input[0].mean([0, 2, 3])
+            var = input[0].permute(1, 0, 2, 3).contiguous().view([nch, -1]).var(1, unbiased=False)
+        elif len(input[0].shape) == 3:
+            mean = input[0].mean([0, 2])
+            var = input[0].permute(1, 0, 2).contiguous().view([nch, -1]).var(1, unbiased=False)
+        else:
+            raise ValueError(f"Unsupported input shape: {input[0].shape}")
         # forcing mean and variance to match between two distributions
         # other ways might work better, i.g. KL divergence
         if self.mmt is None:
