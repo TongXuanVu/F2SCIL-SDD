@@ -344,17 +344,21 @@ class TARGET(BaseLearner):
         cumulative_dataset = None
         DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
         for task in range(self._cur_task):
-            if task == 0:
+            data_dir = os.path.join(self.save_dir2, "task_{}".format(task))
+            nums = self.args['nums1'] if task == 0 else self.args['nums2']
+            if not os.path.exists(data_dir):
                 data_dir = os.path.join(self.save_dir, "task_{}".format(task))
-                cumulative_dataset = DatasetClass(data_dir, transform=train_transform, nums=6000)
+                nums = 6000 if task == 0 else 500
+            current_dataset = DatasetClass(data_dir, transform=train_transform, nums=nums)
+            
+            if cumulative_dataset is None:
+                cumulative_dataset = current_dataset
             else:
-                data_dir = os.path.join(self.save_dir2, "task_{}".format(task))
-                current_dataset = DatasetClass(data_dir,transform=train_transform, nums=500)
                 cumulative_dataset = ConcatDataset([cumulative_dataset, current_dataset])
 
         combined_data_loader = torch.utils.data.DataLoader(
             cumulative_dataset, batch_size=self.args["syn_bs"], shuffle=True,
-            num_workers=4, pin_memory=False)
+            num_workers=0 if self.args.get("dataset") == "ciciot23" else 4, pin_memory=False)
 
         return combined_data_loader
 
