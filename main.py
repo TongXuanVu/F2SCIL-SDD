@@ -201,7 +201,7 @@ def train(args):
                 new_classes = range(start_cls, start_cls + args["incremental_class"])
             seen_classes.extend(list(new_classes))
             
-            test_dataset = ciciot_helper.get_test_dataset(seen_classes)
+            test_dataset = ciciot_helper.get_test_dataset(seen_classes, max_samples_per_class=2000)
             testloader2 = DataLoader(test_dataset, batch_size=args["local_bs"], shuffle=False, num_workers=0)
             testloader1 = testloader2 
             
