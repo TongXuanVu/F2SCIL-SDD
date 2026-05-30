@@ -576,7 +576,25 @@ class TARGET(BaseLearner):
         self.logger.info("The weight of clients......")
         self.logger.info(cls_clnt_weight)
 
-        for it in range(self.args["inc_ep"]):
+        # --- RESUME LOGIC ---
+        start_it = 0
+        if self.args.get("mode") == "resume":
+            rounds_per_task = self.args["inc_ep"] * self.args["com_round"]
+            resume_task = (self.args["resume_round"] - 1) // rounds_per_task if self.args["resume_round"] > 0 else 0
+            if self._cur_task == resume_task:
+                last_completed_round = self.args["resume_round"] - 1
+                if last_completed_round > 0:
+                    checkpoint_path = os.path.join(self.args["model_save_dir"], f"checkpoint_round_{last_completed_round}.pth")
+                    if os.path.exists(checkpoint_path):
+                        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                        model.load_state_dict(checkpoint['global_model'])
+                        self.logger.info(f"=> RESUME: Đã tải thành công Checkpoint vòng {last_completed_round}!")
+                    else:
+                        self.logger.info(f"=> WARNING: Không tìm thấy {checkpoint_path} để resume.")
+                start_it = last_completed_round % self.args["inc_ep"]
+        # --------------------
+
+        for it in range(start_it, self.args["inc_ep"]):
             local_weights = []
             user_model = {}
             all_clients_test_acc = []
@@ -641,15 +659,13 @@ class TARGET(BaseLearner):
                         user_optimizer.step()
 
                     if com % 1 == 0:
-                        # test_acc = self._compute_accuracy(user_model[idx], testloader2)
-                        test_acc = 0.0 # SKIP LOCAL EVAL FOR SPEED
+                        test_acc = self._compute_accuracy(user_model[idx], testloader2)
                         info = ("Task {},Client {} Epoch {}/{} =>  Test_acc {:.2f},".format(
                             self._cur_task, idx, com + 1, self.args["com_round"], test_acc, ))
                         prog_bar.set_description(info)
 
                 local_weights.append(user_model[idx].state_dict())
-                # client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
-                client_test_acc = 0.0 # SKIP LOCAL EVAL FOR SPEED
+                client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
                 all_clients_test_acc.append(client_test_acc)
                 del local_train_loader
                 torch.cuda.empty_cache()
