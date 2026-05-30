@@ -641,13 +641,15 @@ class TARGET(BaseLearner):
                         user_optimizer.step()
 
                     if com % 1 == 0:
-                        test_acc = self._compute_accuracy(user_model[idx], testloader2)
+                        # test_acc = self._compute_accuracy(user_model[idx], testloader2)
+                        test_acc = 0.0 # SKIP LOCAL EVAL FOR SPEED
                         info = ("Task {},Client {} Epoch {}/{} =>  Test_acc {:.2f},".format(
                             self._cur_task, idx, com + 1, self.args["com_round"], test_acc, ))
                         prog_bar.set_description(info)
 
                 local_weights.append(user_model[idx].state_dict())
-                client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
+                # client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
+                client_test_acc = 0.0 # SKIP LOCAL EVAL FOR SPEED
                 all_clients_test_acc.append(client_test_acc)
                 del local_train_loader
                 torch.cuda.empty_cache()
