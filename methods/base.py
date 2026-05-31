@@ -284,7 +284,7 @@ class BaseLearner(object):
 
     def _evaluate(self, y_pred, y_true):
         ret = {}
-        grouped, new_acc = accuracy(y_pred.T[0], y_true, self._known_classes, increment=1)
+        grouped, new_acc = accuracy(y_pred.T[0], y_true, self._known_classes, self._total_classes, increment=1)
         ret["grouped"] = grouped
         ret["top1"] = grouped["total"]
         ret["top{}".format(self.topk)] = np.around(

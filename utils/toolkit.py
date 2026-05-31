@@ -30,7 +30,7 @@ def makedirs(path):
         os.makedirs(path)
 
 
-def accuracy(y_pred, y_true, nb_old, increment=10):
+def accuracy(y_pred, y_true, nb_old, nb_total, increment=10):
     assert len(y_pred) == len(y_true), "Data length error."
     all_acc = {}
     new_acc = []
@@ -39,7 +39,7 @@ def accuracy(y_pred, y_true, nb_old, increment=10):
     )
 
     # Grouped accuracy
-    class_boundaries = range(0, nb_old + 5, increment)
+    class_boundaries = range(0, nb_total, increment)
     for class_id in class_boundaries:
         class_label = "{}".format(str(class_id).rjust(2, "0"))
         class_indices = np.where(np.logical_and(y_true >= class_id, y_true < class_id + increment))[0]
