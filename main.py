@@ -192,9 +192,7 @@ def train(args):
                 start_cls = sum(classes_per_task[:task])
                 end_cls = start_cls + classes_per_task[task]
                 new_classes = range(start_cls, end_cls)
-                seen_classes.extend(list(new_classes))
-                continue
-            if task == 0:
+            elif task == 0:
                 new_classes = range(args["base_class"])
             else:
                 start_cls = args["base_class"] + (task - 1) * args["incremental_class"]

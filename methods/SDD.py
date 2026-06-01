@@ -426,6 +426,17 @@ class TARGET(BaseLearner):
             self._new_classes = self.args['incremental_class']
         self._total_classes = self._known_classes + self._new_classes
 
+        # Load weights from the previous task if resuming
+        if self.args.get("mode") == "resume":
+            rounds_per_task = self.args["inc_ep"] * self.args["com_round"]
+            resume_task = (self.args["resume_round"] - 1) // rounds_per_task if self.args["resume_round"] > 0 else 0
+            if self._cur_task == resume_task and self._cur_task > 0:
+                prev_session_path = os.path.join(self.args["model_save_dir"], self.args['dataset'] + '_session_' + str(self._cur_task - 1) + '.pth')
+                if os.path.exists(prev_session_path):
+                    checkpoint = torch.load(prev_session_path, map_location="cpu", weights_only=False)
+                    self._network.load_state_dict(checkpoint['global_model'])
+                    self.logger.info(f"=> RESUME: Đã tải thành công {prev_session_path} làm Teacher cho Task {self._cur_task}")
+
         if self._cur_task == 0:
             if self.args["dataset"] == "cifar100":
                 self._network = modified_resnet_cifar.resnet20(num_classes=self.base_class)
@@ -478,6 +489,13 @@ class TARGET(BaseLearner):
         self.logger.info(
             "Task {} All params: {}, Trainable params: {}".format(self._cur_task, count_parameters(self._network),
                                                                   count_parameters(self._network, True)))
+
+        if self.args.get("mode") == "resume":
+            rounds_per_task = self.args["inc_ep"] * self.args["com_round"]
+            resume_task = (self.args["resume_round"] - 1) // rounds_per_task if self.args["resume_round"] > 0 else 0
+            if self._cur_task < resume_task:
+                self.logger.info(f"=> Bỏ qua việc huấn luyện cho Task {self._cur_task} (Chỉ dựng kiến trúc mạng).")
+                return
 
         setup_seed(self.seed)
         if self._cur_task == 0 and (not os.path.exists(self.save_dir)):
