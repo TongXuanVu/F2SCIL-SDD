@@ -249,7 +249,7 @@ class TARGET(BaseLearner):
                     current_model = current_model.cuda()
                     current_model.eval()
                     logits = current_model(images)[:, self._known_classes:self._total_classes]
-                    weighted_t_logit += cls_clnt_weight_tensor[i] * logits
+                    weighted_t_logit += cls_clnt_weight_tensor[i, self._known_classes:self._total_classes] * logits
             s_out = student(images.detach())[:, self._known_classes:self._total_classes]
             loss_s = criterion(s_out, weighted_t_logit.detach())
             optimizer.zero_grad()
