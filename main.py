@@ -178,25 +178,18 @@ def train(args):
         resume_task = (args["resume_round"] - 1) // rounds_per_task if args["resume_round"] > 0 else 0
         
         for task in range(args["tasks"]):
-            if args["mode"] == "resume" and task < resume_task:
-                # Still need to update seen_classes for when we actually train
-                rem_classes = args["num_class"] - args["base_class"]
-                inc_tasks = args["tasks"] - 1
-                classes_per_task = [args["base_class"]]
-                if inc_tasks > 0:
-                    base_inc = rem_classes // inc_tasks
-                    remainder = rem_classes % inc_tasks
-                    for i in range(inc_tasks):
-                        classes_per_task.append(base_inc + (1 if i < remainder else 0))
-                
-                start_cls = sum(classes_per_task[:task])
-                end_cls = start_cls + classes_per_task[task]
-                new_classes = range(start_cls, end_cls)
-            elif task == 0:
-                new_classes = range(args["base_class"])
-            else:
-                start_cls = args["base_class"] + (task - 1) * args["incremental_class"]
-                new_classes = range(start_cls, start_cls + args["incremental_class"])
+            rem_classes = args["num_class"] - args["base_class"]
+            inc_tasks = args["tasks"] - 1
+            classes_per_task = [args["base_class"]]
+            if inc_tasks > 0:
+                base_inc = rem_classes // inc_tasks
+                remainder = rem_classes % inc_tasks
+                for i in range(inc_tasks):
+                    classes_per_task.append(base_inc + (1 if i < remainder else 0))
+            
+            start_cls = sum(classes_per_task[:task])
+            end_cls = start_cls + classes_per_task[task]
+            new_classes = range(start_cls, end_cls)
             seen_classes.extend(list(new_classes))
             
             test_dataset = ciciot_helper.get_test_dataset(seen_classes, max_samples_per_class=2000)

@@ -29,8 +29,8 @@ class BaseLearner(object):
         self._cur_task = 0
         self._known_classes = 0
         self._total_classes = 0
-        self.base_class = 60
-        self.incremental_class = 5
+        self.base_class = args.get("base_class", 60)
+        self.incremental_class = args.get("incremental_class", 5)
         self._network = modified_resnet_cifar.resnet20(num_classes=self.base_class)
         # self._network = modified_renet_subimagenet.resnet18(num_classes=self.base_class)
         self._old_network = None

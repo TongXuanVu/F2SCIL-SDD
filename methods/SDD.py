@@ -420,10 +420,21 @@ class TARGET(BaseLearner):
 
     def incremental_train(self, task, trainloader1, train_set, testloader1, testloader2):
         self._cur_task = task
-        if self._cur_task == 0:
-            self._new_classes = self.args['base_class']
+        if self.args["dataset"] == "ciciot23":
+            rem_classes = self.args["num_class"] - self.args["base_class"]
+            inc_tasks = self.args["tasks"] - 1
+            classes_per_task = [self.args["base_class"]]
+            if inc_tasks > 0:
+                base_inc = rem_classes // inc_tasks
+                remainder = rem_classes % inc_tasks
+                for i in range(inc_tasks):
+                    classes_per_task.append(base_inc + (1 if i < remainder else 0))
+            self._new_classes = classes_per_task[self._cur_task]
         else:
-            self._new_classes = self.args['incremental_class']
+            if self._cur_task == 0:
+                self._new_classes = self.args['base_class']
+            else:
+                self._new_classes = self.args['incremental_class']
         self._total_classes = self._known_classes + self._new_classes
 
         # Load weights from the previous task if resuming
@@ -630,8 +641,16 @@ class TARGET(BaseLearner):
                     raise Exception('NO LOSS!')
 
                 user_optimizer = self.set_optim(self._cur_task, user_model[idx])
-                user_scheduler = lr_scheduler.MultiStepLR(user_optimizer, milestones=lr_milestone,
-                                                          gamma=self.args["lr_factor"])
+                
+                # Decay learning rate manually based on communication round 'it'
+                decay_factor = 1.0
+                if it >= 25:
+                    decay_factor = self.args["lr_factor"] ** 2
+                elif it >= 15:
+                    decay_factor = self.args["lr_factor"]
+                
+                for g in user_optimizer.param_groups:
+                    g['lr'] = g['lr'] * decay_factor
                                                           
                 if self.args.get("dataset") == "ciciot23":
                     client_dset = ciciot_helper.get_client_train_dataset(self._cur_task, idx)
@@ -648,7 +667,7 @@ class TARGET(BaseLearner):
                 
                 prog_bar = tqdm(range(self.args["com_round"]))
                 for _, com in enumerate(prog_bar):
-                    user_scheduler.step()
+                    # user_scheduler.step() # Disabled scheduler.step() since we scale LR at round level
                     if self._cur_task == 0:
                         iter_loader = enumerate(local_train_loader)
                     else:
