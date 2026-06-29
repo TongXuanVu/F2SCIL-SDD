@@ -721,15 +721,11 @@ class TARGET(BaseLearner):
                 writer = csv.writer(f)
                 if not file_exists:
                     writer.writerow(["Round", "Task", "Loss", "Accuracy", "Micro_P", "Micro_R", "Micro_F1", 
-                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1", "Macro_FPR"])
+                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1"])
                 writer.writerow([round_idx, self._cur_task, metrics["loss"], metrics["accuracy"], 
                                  metrics["micro_p"], metrics["micro_r"], metrics["micro_f1"],
                                  metrics["macro_p"], metrics["macro_r"], metrics["macro_f1"],
-                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"], metrics["macro_fpr"]])
-            
-            cm_dir = os.path.join(self.args["log_dir"], "cm")
-            os.makedirs(cm_dir, exist_ok=True)
-            np.save(os.path.join(cm_dir, f"cm_round_{round_idx}.npy"), metrics["cm"])
+                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"]])
             
             if not os.path.exists(self.args["model_save_dir"]):
                 os.makedirs(self.args["model_save_dir"])

@@ -216,26 +216,12 @@ class BaseLearner(object):
         metrics_macro = precision_recall_fscore_support(y_true_list, y_pred_list, average='macro', zero_division=0)
         metrics_weighted = precision_recall_fscore_support(y_true_list, y_pred_list, average='weighted', zero_division=0)
         
-        cm = confusion_matrix(y_true_list, y_pred_list)
-        
-        # Calculate FPR (Macro)
-        FP = cm.sum(axis=0) - np.diag(cm)  
-        FN = cm.sum(axis=1) - np.diag(cm)
-        TP = np.diag(cm)
-        TN = cm.sum() - (FP + FN + TP)
-        
-        # Add epsilon to prevent division by zero
-        FPR_per_class = FP / (FP + TN + 1e-8)
-        macro_fpr = np.mean(FPR_per_class)
-
         results = {
             "loss": test_loss,
             "accuracy": accuracy,
             "micro_p": metrics_micro[0], "micro_r": metrics_micro[1], "micro_f1": metrics_micro[2],
             "macro_p": metrics_macro[0], "macro_r": metrics_macro[1], "macro_f1": metrics_macro[2],
-            "weighted_p": metrics_weighted[0], "weighted_r": metrics_weighted[1], "weighted_f1": metrics_weighted[2],
-            "macro_fpr": macro_fpr,
-            "cm": cm
+            "weighted_p": metrics_weighted[0], "weighted_r": metrics_weighted[1], "weighted_f1": metrics_weighted[2]
         }
         return results
 

@@ -139,28 +139,11 @@ def test_pipeline(args):
                 writer = csv.writer(f)
                 if not file_exists:
                     writer.writerow(["Round", "Task", "Loss", "Accuracy", "Micro_P", "Micro_R", "Micro_F1", 
-                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1", "Macro_FPR"])
+                                     "Macro_P", "Macro_R", "Macro_F1", "Weighted_P", "Weighted_R", "Weighted_F1"])
                 writer.writerow([round_idx, task, metrics["loss"], metrics["accuracy"], 
                                  metrics["micro_p"], metrics["micro_r"], metrics["micro_f1"],
                                  metrics["macro_p"], metrics["macro_r"], metrics["macro_f1"],
-                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"], metrics["macro_fpr"]])
-            
-            # Save CM for the last round
-            if round_idx == args["tasks"] * rounds_per_task:
-                try:
-                    import seaborn as sns
-                    import matplotlib.pyplot as plt
-                    plt.figure(figsize=(12, 10))
-                    sns.heatmap(metrics["cm"], annot=False, cmap='Blues')
-                    plt.title(f'Confusion Matrix (Task {task}, Round {round_idx})')
-                    plt.ylabel('True Label')
-                    plt.xlabel('Predicted Label')
-                    cm_plot_path = os.path.join(args["log_dir"], 'final_confusion_matrix.png')
-                    plt.savefig(cm_plot_path, dpi=300, bbox_inches='tight')
-                    plt.close()
-                    print(f"=> TEST_ALL: Đã lưu hình ảnh Confusion Matrix tại: {cm_plot_path}")
-                except Exception as e:
-                    print(f"=> Lỗi vẽ Confusion Matrix: {e}")
+                                 metrics["weighted_p"], metrics["weighted_r"], metrics["weighted_f1"]])
                     
         print(f"=> TEST_ALL: Hoàn tất. Đã lưu metrics vào {csv_path}")
         print("Test pipeline only implemented for ciciot23")
