@@ -343,12 +343,33 @@ class TARGET(BaseLearner):
     def get_replay_dataloader(self):
         cumulative_dataset = None
         DatasetClass = UnlabeledTensorDataset if self.args.get("dataset") == "ciciot23" else UnlabeledImageDataset
+        
+        if self.args.get("dataset") == "ciciot23":
+            from dataloader.ciciot23_helper import Ciciot23_helper
+            ciciot_helper = Ciciot23_helper(self.args, data_root=self.args.get('data_dir', 'C:/FederatedLearning/FL/core/data_split'))
+
         for task in range(self._cur_task):
             data_dir = os.path.join(self.save_dir2, "task_{}".format(task))
-            nums = self.args['nums1'] if task == 0 else self.args['nums2']
             if not os.path.exists(data_dir):
                 data_dir = os.path.join(self.save_dir, "task_{}".format(task))
-                nums = 6000 if task == 0 else 500
+
+            # Dynamically calculate 1% of total training samples for this task
+            if self.args.get("dataset") == "ciciot23":
+                total_samples = 0
+                for client_idx in range(self.args["num_users"]):
+                    client_dset = ciciot_helper.get_client_train_dataset(task, client_idx)
+                    if client_dset is not None:
+                        total_samples += len(client_dset)
+                
+                # 1% of total training samples
+                target_samples = int(total_samples * 0.01)
+                # Convert to number of batch files (each file contains 256 samples)
+                nums = (target_samples + 255) // 256
+            else:
+                nums = self.args['nums1'] if task == 0 else self.args['nums2']
+                if not os.path.exists(os.path.join(self.save_dir2, "task_{}".format(task))) and not os.path.exists(os.path.join(self.save_dir, "task_{}".format(task))):
+                    nums = 6000 if task == 0 else 500
+
             current_dataset = DatasetClass(data_dir, transform=train_transform, nums=nums)
             
             if cumulative_dataset is None:
