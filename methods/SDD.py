@@ -482,9 +482,14 @@ class TARGET(BaseLearner):
             self.logger.info("Task{},Feature:{}, Class:{}".format(self._cur_task, in_features, out_features))
 
         elif self._cur_task == 1:
-            best_checkpoint = torch.load(
-                os.path.join(self.args["model_save_dir"], self.args['dataset'] + '_session_' + str(self._cur_task-1) + '.pth'))
-            self._network.load_state_dict(best_checkpoint['global_model'])
+            resume_task = (self.args.get("resume_round", 0) - 1) // (self.args.get("inc_ep", 30) * self.args.get("com_round", 1)) if self.args.get("resume_round", 0) > 0 else 0
+            skip_load = self.args.get("mode") == "resume" and self._cur_task < resume_task
+            
+            if not skip_load:
+                best_checkpoint = torch.load(
+                    os.path.join(self.args["model_save_dir"], self.args['dataset'] + '_session_' + str(self._cur_task-1) + '.pth'), map_location='cpu', weights_only=False)
+                self._network.load_state_dict(best_checkpoint['global_model'])
+            
             self._old_network = copy.deepcopy(self._network)
             in_features = self._network.fc.in_features
             out_features = self._network.fc.out_features
@@ -493,8 +498,9 @@ class TARGET(BaseLearner):
             self._network.fc = new_fc
 
             self._network = self._network.cuda()
-            acc = self._compute_accuracy(self._network, testloader2)
-            self.logger.info("begin task{} acc {}".format(self._cur_task, acc))
+            if not skip_load:
+                acc = self._compute_accuracy(self._network, testloader2)
+                self.logger.info("begin task{} acc {}".format(self._cur_task, acc))
             new_in_features = self._network.fc.in_features
             new_out_features = self._network.fc.out_features
             self.logger.info("Task{},Feature:{}, Class:{}".format(self._cur_task, new_in_features, new_out_features))
