@@ -639,7 +639,8 @@ class TARGET(BaseLearner):
             resume_task = (self.args["resume_round"] - 1) // rounds_per_task if self.args["resume_round"] > 0 else 0
             if self._cur_task == resume_task:
                 last_completed_round = self.args["resume_round"] - 1
-                if last_completed_round > 0:
+                start_it = last_completed_round % self.args["inc_ep"]
+                if start_it > 0:
                     checkpoint_path = os.path.join(self.args["model_save_dir"], f"checkpoint_round_{last_completed_round}.pth")
                     if os.path.exists(checkpoint_path):
                         checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
@@ -647,7 +648,6 @@ class TARGET(BaseLearner):
                         self.logger.info(f"=> RESUME: Đã tải thành công Checkpoint vòng {last_completed_round}!")
                     else:
                         self.logger.info(f"=> WARNING: Không tìm thấy {checkpoint_path} để resume.")
-                start_it = last_completed_round % self.args["inc_ep"]
         # --------------------
 
         for it in range(start_it, self.args["inc_ep"]):
