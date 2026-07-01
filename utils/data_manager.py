@@ -44,8 +44,12 @@ def average_weights2(w, cls_clnt_weight):
             w_avg[key] = torch.div(w_avg[key], len(w))
 
     fc2_weight_matrix_sum = torch.zeros_like(w[0]["fc.fc2.weight"])
+    fc2_out_features = fc2_weight_matrix_sum.shape[0]
     for i in range(len(w)):
-        expanded_fc2_weights = torch.tensor(cls_clnt_weight[i]).reshape(-1, 1).cuda()
+        cw = np.zeros(fc2_out_features, dtype=np.float32)
+        valid_len = min(fc2_out_features, len(cls_clnt_weight[i]))
+        cw[:valid_len] = cls_clnt_weight[i][:valid_len]
+        expanded_fc2_weights = torch.tensor(cw).reshape(-1, 1).cuda()
         fc2_weight_matrix_sum += w[i]["fc.fc2.weight"] * expanded_fc2_weights
     w_avg["fc.fc2.weight"] = fc2_weight_matrix_sum
     return w_avg
