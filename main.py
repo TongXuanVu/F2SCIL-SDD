@@ -36,6 +36,9 @@ parser.add_argument('--net', type=str, default="resnet20", help='choose a model'
 parser.add_argument('--syn_round', type=int, default=100, help='generator epochs')
 parser.add_argument('--syn_round2', type=int, default=100, help='generator epochs')
 parser.add_argument('--num_users', type=int, default=5, help='num of clients')
+parser.add_argument('--log_client_acc', action='store_true', default=False,
+                    help='In accuracy tung client moi round (chi de debug). Tat mac dinh vi '
+                         'voi 100 client no chiem >95%% thoi gian moi round va KHONG anh huong ket qua.')
 parser.add_argument('--synthesis_batch_size', type=int, default=256, help='synthesis batch size')
 parser.add_argument('--local_bs', type=int, default=128, help='local batch size')
 parser.add_argument('--syn_bs', type=int, default=25, help='syn batch size')

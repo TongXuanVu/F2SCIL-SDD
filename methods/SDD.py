@@ -722,15 +722,20 @@ class TARGET(BaseLearner):
                         loss.backward()
                         user_optimizer.step()
 
-                    if com % 1 == 0:
+                    # Eval CUC BO chi de hien thi progress bar - KHONG anh huong ket qua.
+                    # Voi 100 client x tap test hang trieu mau, day la nut that chinh
+                    # (chiem >95% thoi gian moi round). Mac dinh TAT.
+                    if self.args.get("log_client_acc") and com % 1 == 0:
                         test_acc = self._compute_accuracy(user_model[idx], testloader2)
                         info = ("Task {},Client {} Epoch {}/{} =>  Test_acc {:.2f},".format(
                             self._cur_task, idx, com + 1, self.args["com_round"], test_acc, ))
                         prog_bar.set_description(info)
 
                 local_weights.append(user_model[idx].state_dict())
-                client_test_acc = self._compute_accuracy(user_model[idx], testloader2)
-                all_clients_test_acc.append(client_test_acc)
+                # Chi dung cho dong log " round {} ,acc {} " o cuoi round.
+                # average_weights() KHONG dung gia tri nay -> tat di khong doi ket qua.
+                if self.args.get("log_client_acc"):
+                    all_clients_test_acc.append(self._compute_accuracy(user_model[idx], testloader2))
                 del local_train_loader
                 torch.cuda.empty_cache()
 
