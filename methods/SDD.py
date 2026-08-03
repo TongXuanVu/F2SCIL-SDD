@@ -846,9 +846,18 @@ class TARGET(BaseLearner):
         new_syn_dataloader = DataLoader(new_syn_dataset, batch_size=self.args["local_bs"], shuffle=False)
 
         for i in range(len(model_list)):
-            acc = self._compute_accuracy(model_list[i], testloader2)
+            # acc chỉ đi vào test_acc_tea để in một dòng "initial acc"; nó KHÔNG
+            # tham gia tính normalized_matrix nên không ảnh hưởng average_weights2.
+            # Nhưng nó quét toàn bộ test set cho từng client: với 14.002.687 mẫu,
+            # local_bs=128 và 100 client là 10,9 triệu batch mỗi lần gọi
+            # _local_finetune (chạy cuối mỗi task) — chiếm gần trọn một session
+            # Kaggle 12h. Gate sau --log_client_acc, giống hai chỗ ở vòng lặp
+            # huấn luyện (dòng ~728 và ~737).
+            acc = self._compute_accuracy(model_list[i], testloader2) \
+                if self.args.get("log_client_acc") else None
             cnn_acc, new_acc, _ = self.eval_task(new_syn_dataloader, model_list[i])
-            self.logger.info("Client {} ,CNN: {}".format(i, cnn_acc["grouped"]))
+            if self.args.get("log_client_acc"):
+                self.logger.info("Client {} ,CNN: {}".format(i, cnn_acc["grouped"]))
             all_client_new_test_acc = np.vstack([all_client_new_test_acc, new_acc])
             test_acc_tea.append(acc)
         self.logger.info(all_client_new_test_acc)
