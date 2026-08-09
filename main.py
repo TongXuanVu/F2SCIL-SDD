@@ -25,6 +25,11 @@ parser.add_argument('--agg', type=str, default="None", help='aggregation method'
 parser.add_argument('--seed', type=int, default=1008, help='random seed')
 # federated continual learning settings
 parser.add_argument('--data_dir', type=str, default='C:/FederatedLearning/FL/core/data_split', help='path to dataset root')
+parser.add_argument('--fewshot_dir', type=str, default='',
+                    help=('Thu muc du lieu FEW-SHOT (client_*_task_*.pt cho task 2..6). '
+                          'De trong = full data. Task 0 LUON lay tu --data_dir vi hai bo '
+                          'few-shot khong co file task_1. Vi du: '
+                          '/kaggle/input/.../iot100client_fewshot/federated_data_fewshot'))
 parser.add_argument('--dataset', type=str, default="tinyImagenet", help='which dataset')
 parser.add_argument('--tasks', type=int, default=11, help='total number of tasks')
 parser.add_argument('--num_class', type=int, default=200, help='total of class')

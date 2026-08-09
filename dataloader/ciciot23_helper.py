@@ -107,6 +107,21 @@ class Ciciot23_helper:
             self.federated_dir = data_root
             print(f"[Ciciot23_helper] Layout phang -> doc client tu: {self.federated_dir}")
 
+        # ── Kich ban FEW-SHOT ────────────────────────────────────────────────
+        # Neu dat --fewshot_dir, moi task >= 1 doc tu thu muc do thay vi
+        # federated_dir. Task 0 (base) LUON dung full data — hai bo few-shot
+        # co tinh khong co file task_1, dung quy uoc voi HFIN va AFSIC-IDS.
+        self.fewshot_dir = (args.get("fewshot_dir") or "").strip() or None
+        if self.fewshot_dir:
+            if not os.path.isdir(self.fewshot_dir):
+                raise FileNotFoundError(
+                    f"[Ciciot23_helper] Khong thay thu muc few-shot: {self.fewshot_dir}")
+            n = len(glob.glob(os.path.join(self.fewshot_dir, "*.pt")))
+            print(f"[Ciciot23_helper] FEW-SHOT tu task 1 tro di: "
+                  f"{self.fewshot_dir} ({n} file .pt)")
+        else:
+            print("[Ciciot23_helper] FULL data cho moi task")
+
         self.global_test_file = os.path.join(data_root, "global_test_data.pt")
         if not os.path.exists(self.global_test_file) and os.path.exists("/kaggle/input"):
             hits = glob.glob("/kaggle/input/**/global_test_data.pt", recursive=True)
@@ -146,23 +161,35 @@ class Ciciot23_helper:
         y_filtered = torch.cat(y_filtered_list, dim=0)
         return CICIoT23Dataset(x_filtered, y_filtered)
 
+    def _task_dir(self, task):
+        """Thu muc chua du lieu cua task nay.
+
+        Task 0 luon lay tu federated_dir (full data); tu task 1 tro di, neu bat
+        few-shot thi lay tu fewshot_dir. KHONG fallback ve full khi thieu file —
+        fallback se am tham dung full data va lam hong ca thi nghiem.
+        """
+        if self.fewshot_dir and task > 0:
+            return self.fewshot_dir
+        return self.federated_dir
+
     def get_client_train_dataset(self, task, client_idx):
         """Loads data from federated_data folder. Task is 0-indexed in F2SCIL, but 1-indexed in federated_data files"""
         task_id_file = task + 1
-        path = os.path.join(self.federated_dir, f"client_{client_idx}_task_{task_id_file}.pt")
+        path = os.path.join(self._task_dir(task), f"client_{client_idx}_task_{task_id_file}.pt")
         if not os.path.exists(path):
             # Client might not have data for this task
             return None
-        
+
         data = torch.load(path, map_location="cpu", weights_only=False)
         return CICIoT23Dataset(data["x"], _remap_labels(data["y"].long(), self.data_root))
 
     def get_global_train_dataset(self, task):
         """Combines all clients data for the current task to form a global trainset for the server"""
         task_id_file = task + 1
+        task_dir = self._task_dir(task)
         x_all, y_all = [], []
         for client_idx in range(self.args["num_users"]):
-            path = os.path.join(self.federated_dir, f"client_{client_idx}_task_{task_id_file}.pt")
+            path = os.path.join(task_dir, f"client_{client_idx}_task_{task_id_file}.pt")
             if os.path.exists(path):
                 data = torch.load(path, map_location="cpu", weights_only=False)
                 x_all.append(data["x"])
