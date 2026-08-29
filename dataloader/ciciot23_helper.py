@@ -15,12 +15,48 @@ from torch.utils.data import Dataset, DataLoader
 _LABEL_LUT = None
 _LABEL_LUT_READY = False
 
+# ── Bo du lieu nao dang chay ─────────────────────────────────────────────────
+# CIC-IoT23 100-client giu label ID GOC voi thu tu task phi tuan tu -> phai remap.
+# CAN-bus/IoV 100-client da tuan tu 0..12 san -> KHONG duoc remap.
+#
+# Phai co cong tac nay vi _get_label_lut() tim file json o hai cho nguy hiem:
+#   1. glob "/kaggle/input/**" — vo phai bang cua IoT neu dataset IoT con gan kem;
+#   2. ban du phong nhung san trong repo (dataloader/task_mapping_label_ids.json)
+#      — luon ton tai, nen KHONG gan kem IoT cung van vo phai.
+# Ca hai deu se anh xa nham nhan IoV ma khong bao loi gi.
+CAU_HINH_BO = {
+    "ciciot23": {"remap_nhan": True,  "num_class": 34, "tasks": 6, "base_class": 6},
+    "can_iov":  {"remap_nhan": False, "num_class": 13, "tasks": 5, "base_class": 3},
+}
+BO_HIEN_TAI = "ciciot23"          # mac dinh, giu tuong thich nguoc
+
+
+def set_dataset(ten):
+    """Chon bo du lieu. Goi TRUOC khi tao Ciciot23_helper."""
+    global BO_HIEN_TAI, _LABEL_LUT, _LABEL_LUT_READY
+    if ten not in CAU_HINH_BO:
+        raise SystemExit(f"[Ciciot23_helper] Dataset khong ho tro: {ten}. "
+                         f"Chi co: {list(CAU_HINH_BO)}")
+    BO_HIEN_TAI = ten
+    _LABEL_LUT, _LABEL_LUT_READY = None, False    # xoa cache LUT cu
+    cfg = CAU_HINH_BO[ten]
+    print(f"[Ciciot23_helper] set_dataset({ten}): {cfg['num_class']} lop, "
+          f"{cfg['tasks']} task, base {cfg['base_class']}, "
+          f"remap nhan: {'CO' if cfg['remap_nhan'] else 'KHONG'}")
+
 
 def _get_label_lut(data_root=None):
     global _LABEL_LUT, _LABEL_LUT_READY
     if _LABEL_LUT_READY:
         return _LABEL_LUT
     _LABEL_LUT_READY = True
+
+    # Bo khong can remap thi dung han o day — KHONG duoc roi xuong phan tim file
+    # ben duoi, vi no se vo phai bang cua bo khac (xem ghi chu o CAU_HINH_BO).
+    if not CAU_HINH_BO[BO_HIEN_TAI]["remap_nhan"]:
+        print(f"[Ciciot23_helper] Bo '{BO_HIEN_TAI}' co nhan tuan tu san "
+              f"-> KHONG remap (bo qua moi task_mapping_label_ids.json).")
+        return None
 
     candidates = []
     if data_root:
@@ -134,6 +170,18 @@ class Ciciot23_helper:
         self.test_x = test_dict["x"].float()
         self.test_y = _remap_labels(test_dict["y"].long(), data_root)
         print(f"[Ciciot23_helper] Loaded global test set: {self.test_x.shape[0]} samples")
+
+        # Doi chieu voi cau hinh bo dang chay. Can thiet vi dong glob o tren lay
+        # global_test_data.pt DAU TIEN tim thay trong /kaggle/input — neu ca hai
+        # dataset IoT va IoV cung duoc gan, no co the vo phai file cua bo kia.
+        _n_thuc = int(self.test_y.max()) + 1
+        _n_ky_vong = CAU_HINH_BO[BO_HIEN_TAI]["num_class"]
+        if _n_thuc != _n_ky_vong:
+            raise SystemExit(
+                f"[Ciciot23_helper] {self.global_test_file} co {_n_thuc} lop nhung bo "
+                f"'{BO_HIEN_TAI}' can {_n_ky_vong}. Gan nham dataset, hoac --data_dir sai.")
+        print(f"[Ciciot23_helper] Da doi chieu: {_n_thuc} lop, "
+              f"{self.test_x.shape[1]} dac trung — khop bo '{BO_HIEN_TAI}'.")
 
     def get_test_dataset(self, seen_classes, max_samples_per_class=None):
         """Filters global test data for only the seen classes up to the current task"""
