@@ -138,10 +138,23 @@ class Ciciot23_helper:
         # Ho tro ca 2 layout:
         #   <root>/federated_data/client_*.pt   (tren may)
         #   <root>/client_*.pt                  (layout PHANG cua Kaggle dataset)
+        if not os.path.isdir(data_root):
+            raise SystemExit(
+                f"[Ciciot23_helper] --data_dir khong ton tai: {data_root}\n"
+                f"  Chua gan dataset, hoac go sai duong dan. Dung de code tu di dò\n"
+                f"  roi vo phai du lieu cua bo khac.")
+
         self.federated_dir = os.path.join(data_root, "federated_data")
         if not os.path.isdir(self.federated_dir):
             self.federated_dir = data_root
             print(f"[Ciciot23_helper] Layout phang -> doc client tu: {self.federated_dir}")
+            _n_shard = len(glob.glob(os.path.join(data_root, "client_*_task_*.pt")))
+            if _n_shard == 0:
+                raise SystemExit(
+                    f"[Ciciot23_helper] {data_root} khong co thu muc federated_data/ "
+                    f"lan khong co file client_*_task_*.pt nao.\n"
+                    f"  Kiem tra lai --data_dir.")
+            print(f"[Ciciot23_helper] Tim thay {_n_shard} shard o layout phang.")
 
         # ── Kich ban FEW-SHOT ────────────────────────────────────────────────
         # Neu dat --fewshot_dir, moi task >= 1 doc tu thu muc do thay vi
@@ -160,10 +173,34 @@ class Ciciot23_helper:
 
         self.global_test_file = os.path.join(data_root, "global_test_data.pt")
         if not os.path.exists(self.global_test_file) and os.path.exists("/kaggle/input"):
-            hits = glob.glob("/kaggle/input/**/global_test_data.pt", recursive=True)
-            if hits:
-                self.global_test_file = hits[0]
-                print(f"[Ciciot23_helper] Auto-detect test file: {self.global_test_file}")
+            # Ban cu lay hits[0] — file DAU TIEN tim thay, bat ke thuoc bo nao.
+            # Da tung vo phai global_test_data.pt cua IoT (34 lop) khi chay IoV.
+            # Nay chi nhan file co SO LOP khop bo dang chay.
+            _ky_vong = CAU_HINH_BO[BO_HIEN_TAI]["num_class"]
+            hits = sorted(glob.glob("/kaggle/input/**/global_test_data.pt", recursive=True))
+            hop_le, bo_qua = None, []
+            for h in hits:
+                try:
+                    _y = torch.load(h, map_location="cpu", weights_only=False)["y"]
+                    _n = int(_y.max()) + 1
+                except Exception as e:
+                    bo_qua.append(f"{h} (khong doc duoc: {e})")
+                    continue
+                if _n == _ky_vong:
+                    hop_le = h
+                    break
+                bo_qua.append(f"{h} ({_n} lop)")
+            for b in bo_qua:
+                print(f"[Ciciot23_helper] Bo qua {b}")
+            if hop_le is None:
+                raise SystemExit(
+                    f"[Ciciot23_helper] Khong thay global_test_data.pt nao co "
+                    f"{_ky_vong} lop cho bo '{BO_HIEN_TAI}'.\n"
+                    f"  --data_dir tro toi: {data_root} (ton tai: {os.path.isdir(data_root)})\n"
+                    f"  Da quet {len(hits)} file trong /kaggle/input.\n"
+                    f"  Kiem tra da gan dung dataset chua.")
+            self.global_test_file = hop_le
+            print(f"[Ciciot23_helper] Auto-detect test file: {self.global_test_file}")
 
         print("[Ciciot23_helper] Loading global test data...")
         test_dict = torch.load(self.global_test_file, map_location="cpu", weights_only=False)
