@@ -31,6 +31,13 @@ parser.add_argument('--fewshot_dir', type=str, default='',
                           'few-shot khong co file task_1. Vi du: '
                           '/kaggle/input/.../iot100client_fewshot/federated_data_fewshot'))
 parser.add_argument('--dataset', type=str, default="tinyImagenet", help='which dataset')
+parser.add_argument('--data_variant', type=str, default='ciciot23',
+                    choices=['ciciot23', 'can_iov'],
+                    help=('CHI dung khi --dataset ciciot23. Chon BO du lieu dang bang: '
+                          'ciciot23 = 34 lop / 6 task / base 6, nhan goc phi tuan tu -> CAN remap; '
+                          'can_iov  = 13 lop / 5 task / base 3, nhan da tuan tu 0..12 -> KHONG remap. '
+                          'Tach khoi --dataset vi --dataset con dieu khien 25 cho re nhanh '
+                          'bang-vs-anh trong methods/, doi no se lam ca 25 cho chay sai.'))
 parser.add_argument('--tasks', type=int, default=11, help='total number of tasks')
 parser.add_argument('--num_class', type=int, default=200, help='total of class')
 parser.add_argument('--base_class', type=int, default=100, help='base class')
@@ -161,8 +168,21 @@ def train(args):
     learner = get_learner(args["method"], args)
 
     if args["dataset"] == "ciciot23":
-        from dataloader.ciciot23_helper import Ciciot23_helper
+        from dataloader.ciciot23_helper import Ciciot23_helper, set_dataset, CAU_HINH_BO
         from torch.utils.data import DataLoader
+        # `--dataset ciciot23` = "du lieu dang BANG, dung CNN1D" — 25 cho trong
+        # methods/ re nhanh theo no de phan biet voi anh, nen KHONG doi.
+        # `--data_variant` moi la thu chon BO du lieu cu the (bang nhan, so lop).
+        set_dataset(args.get("data_variant", "ciciot23"))
+        # Doi chieu tham so dong lenh voi cau hinh chuan cua bo — sai thi dung han
+        # thay vi chay 150 round roi moi phat hien nhan bi anh xa lech.
+        cfg = CAU_HINH_BO[args.get("data_variant", "ciciot23")]
+        for k in ("num_class", "tasks", "base_class"):
+            if args[k] != cfg[k]:
+                raise SystemExit(
+                    f"[main] --{k}={args[k]} khong khop bo "
+                    f"'{args.get('data_variant')}' (ky vong {cfg[k]}). "
+                    f"Dung lai de tranh chay sai am tham.")
         ciciot_helper = Ciciot23_helper(args, data_root=args.get('data_dir', 'C:/FederatedLearning/FL/core/data_split'))
         seen_classes = []
         rounds_per_task = args["inc_ep"] * args["com_round"]
@@ -207,7 +227,10 @@ if __name__ == '__main__':
     print("Start time:", time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime(start_time)))
 
     args.init_cls = args.base_class
-    args.exp_name = f"{args.dataset}_{'base_session'}"
+    # Ten thu muc theo BO du lieu, khong theo --dataset: chay IoV se ghi vao
+    # run/can_iov_base_session/ chu khong de len ket qua IoT da co.
+    _bo = args.data_variant if args.dataset == "ciciot23" else args.dataset
+    args.exp_name = f"{_bo}_{'base_session'}"
     if args.method == "ours":
         dir = "run"
         if not os.path.exists(dir):
