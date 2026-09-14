@@ -273,8 +273,9 @@ class TARGET(BaseLearner):
         else:
             generator = Generator(nz=nz, ngf=64, img_size=img_size, nc=3).cuda()
         teacher = teacher.cuda()
-        acc = self._compute_accuracy(teacher, testloader)
-        self.logger.info("replay_teacher_acc {}".format(acc))
+        if self.args.get("log_client_acc", False):
+            acc = self._compute_accuracy(teacher, testloader)
+            self.logger.info("replay_teacher_acc {}".format(acc))
 
         student = copy.deepcopy(teacher)
         student.apply(weight_init)
@@ -303,10 +304,11 @@ class TARGET(BaseLearner):
             if it >= warmup:
                 student.train()
                 self.kd_train(student, teacher, criterion, optimizer)  # kd_steps
-                test_acc = self._compute_accuracy(student, testloader)
-                info = ("Task {},Replay Data Generation, Epoch {}/{} =>  Student test_acc: {:.2f}".format(
-                    self._cur_task, it + 1, self.args["syn_round"], test_acc, ))
-                prog_bar.set_description(info)
+                if self.args.get("log_client_acc", False):
+                    test_acc = self._compute_accuracy(student, testloader)
+                    info = ("Task {},Replay Data Generation, Epoch {}/{} =>  Student test_acc: {:.2f}".format(
+                        self._cur_task, it + 1, self.args["syn_round"], test_acc, ))
+                    prog_bar.set_description(info)
                 scheduler.step()
 
         print("For task {}, Replay data generation completed! ".format(self._cur_task))
@@ -429,13 +431,14 @@ class TARGET(BaseLearner):
             synthesizer.synthesize()  # generate synthetic data
             if it >= warmup:
                 self.kd_train2(student, model_list, cls_clnt_weight_tensor, criterion, optimizer)  # kd_steps
-                test_acc = self._compute_accuracy(student, testloader1)
-                if test_acc > best_acc:
-                    best_acc = test_acc
-                    best_epoch = it
-                info = ("Task {},syn Data Generation, Epoch {}/{} =>  Student test_acc: {:.2f} , best_epoch:{}"
-                        .format(self._cur_task, it + 1, self.args['syn_round'], best_acc, best_epoch))
-                prog_bar.set_description(info)
+                if self.args.get("log_client_acc", False):
+                    test_acc = self._compute_accuracy(student, testloader1)
+                    if test_acc > best_acc:
+                        best_acc = test_acc
+                        best_epoch = it
+                    info = ("Task {},syn Data Generation, Epoch {}/{} =>  Student test_acc: {:.2f} , best_epoch:{}"
+                            .format(self._cur_task, it + 1, self.args['syn_round'], best_acc, best_epoch))
+                    prog_bar.set_description(info)
                 scheduler.step()
         self.logger.info("For task {}, syn data generation completed! ".format(self._cur_task))
 
@@ -780,8 +783,9 @@ class TARGET(BaseLearner):
                 model_list.append(net)
         if len(model_list) > 0:
             ensemble_model = Ensemble(model_list)
-            acc = self._compute_accuracy(ensemble_model, testloader2)
-            self.logger.info("Ensemble model acc :{}".format(acc))
+            if self.args.get("log_client_acc", False):
+                acc = self._compute_accuracy(ensemble_model, testloader2)
+                self.logger.info("Ensemble model acc :{}".format(acc))
 
         self.syn_data_generation(testloader1, model, model_list, cls_clnt_weight_tensor)
         syn_dataloader = self.get_syn_data_loader()
