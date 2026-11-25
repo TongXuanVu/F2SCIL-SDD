@@ -22,7 +22,7 @@ parser.add_argument('--save_png', type=str, default="run/result", help='save the
 parser.add_argument('--project', type=str, default="TARGET", help='wandb project')
 parser.add_argument('--group', type=str, default="exp1", help='wandb group')
 parser.add_argument('--agg', type=str, default="None", help='aggregation method')
-parser.add_argument('--seed', type=int, default=1008, help='random seed')
+parser.add_argument('--seed', type=int, default=2021, help='random seed')
 # federated continual learning settings
 parser.add_argument('--data_dir', type=str, default='C:/FederatedLearning/FL/core/data_split', help='path to dataset root')
 parser.add_argument('--fewshot_dir', type=str, default='',
@@ -165,6 +165,7 @@ def test_pipeline(args):
 
 def train(args):
     setup_seed(args["seed"])
+    print(f"[SEED] {args['seed']}", flush=True)
     learner = get_learner(args["method"], args)
 
     if args["dataset"] == "ciciot23":
